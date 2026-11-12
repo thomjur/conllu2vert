@@ -48,13 +48,13 @@ def test_cli_converts_all_files_into_one_corpus(tmp_path: Path) -> None:
     )
 
     assert exit_code == 0
-    vertical = output_dir / "pahlavi.vert"
-    registry = output_dir / "pahlavi.registry"
+    vertical = output_dir / "czerofive.vert"
+    registry = output_dir / "czerofive.registry"
     assert vertical.exists()
     assert registry.exists()
 
     content = vertical.read_text(encoding="utf-8")
-    assert content.index('<doc id="A">') < content.index('<doc id="B">')
+    assert content.index('<doc file="A" n="1">') < content.index('<doc file="B" n="2">')
     assert content.count("<doc ") == 2
     assert "a\ta\tNOUN\t_\troot\tx\n" in content
     assert "b\tb\tNOUN\t_\troot\tx\n" in content
@@ -92,7 +92,7 @@ def test_cli_can_skip_registry_and_accept_explicit_files(tmp_path: Path) -> None
     assert exit_code == 0
     assert output.exists()
     assert not (tmp_path / "custom.registry").exists()
-    assert '<doc id="ONE">' in output.read_text(encoding="utf-8")
+    assert '<doc file="ONE" n="1">' in output.read_text(encoding="utf-8")
 
 
 def test_cli_returns_error_for_missing_input_directory(tmp_path: Path, capsys) -> None:

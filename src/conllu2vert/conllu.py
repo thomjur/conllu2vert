@@ -71,7 +71,7 @@ class Sentence:
 
 @dataclass(slots=True)
 class Document:
-    id: str
+    file: str
     sentences: list[Sentence] = field(default_factory=list)
 
 
@@ -200,7 +200,7 @@ def read_documents(
         sentence_index += 1
         sid = sentence_id
         if not sid:
-            sid = f"{document.id}_s{sentence_index}"
+            sid = f"{document.file}_s{sentence_index}"
             stats.missing_sent_ids += 1
         document.sentences.append(Sentence(sid, tuple(sentence_tokens)))
         stats.sentences += 1
@@ -225,7 +225,7 @@ def read_documents(
             if not new_id:
                 new_id = path.stem
                 stats.missing_text_ids += 1
-            if document is None or document.id != new_id:
+            if document is None or document.file != new_id:
                 start_document(new_id)
             return
 

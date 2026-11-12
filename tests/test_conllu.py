@@ -58,7 +58,7 @@ def test_read_documents_handles_edge_cases(tmp_path: Path) -> None:
 
     documents = list(read_documents(path, stats=stats))
 
-    assert [document.id for document in documents] == ["DOC1", "DOC2"]
+    assert [document.file for document in documents] == ["DOC1", "DOC2"]
     assert len(documents[0].sentences) == 2
     assert documents[0].sentences[0].id == "s1"
     assert documents[0].sentences[0].tokens == (
@@ -98,7 +98,7 @@ def test_read_documents_repairs_quoted_comments(tmp_path: Path) -> None:
     assert stats.quoted_comments == 1
     assert stats.skipped == {}
     assert stats.tokens == 1
-    assert documents[0].id == "sample"
+    assert documents[0].file == "sample"
     assert documents[0].sentences[0].id == "s1"
 
 
@@ -111,7 +111,7 @@ def test_read_documents_generates_missing_ids(tmp_path: Path) -> None:
 
     documents = list(read_documents(path, stats=stats))
 
-    assert documents[0].id == "sample"
+    assert documents[0].file == "sample"
     assert documents[0].sentences[0].id == "sample_s1"
     assert stats.missing_text_ids == 1
     assert stats.missing_sent_ids == 1

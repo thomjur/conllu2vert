@@ -35,11 +35,13 @@ class VerticalWriter:
     def __init__(self, stream: TextIO) -> None:
         self._stream = stream
 
-    def write_document(self, document: Document) -> None:
+    def write_document(self, document: Document, number: int) -> None:
         if not document.sentences:
             return
 
-        self._stream.write(f"<doc id={_quote_attribute(document.id)}>\n")
+        self._stream.write(
+            f"<doc file={_quote_attribute(document.file)} n=\"{number}\">\n"
+        )
         for sentence in document.sentences:
             self._stream.write(f"<s id={_quote_attribute(sentence.id)}>\n")
             for token in sentence.tokens:

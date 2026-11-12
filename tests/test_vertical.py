@@ -27,10 +27,10 @@ def test_writer_outputs_documents_and_sentences() -> None:
     )
     stream = StringIO()
 
-    VerticalWriter(stream).write_document(document)
+    VerticalWriter(stream).write_document(document, 1)
 
     assert stream.getvalue() == (
-        '<doc id="D1">\n'
+        '<doc file="D1" n="1">\n'
         '<s id="s1">\n'
         "a\ta\tNOUN\t_\troot\tx\n"
         "</s>\n"
@@ -45,14 +45,16 @@ def test_writer_escapes_structure_ids() -> None:
     document = Document('a&"b', [Sentence("s<1>", (make_token(),))])
     stream = StringIO()
 
-    VerticalWriter(stream).write_document(document)
+    VerticalWriter(stream).write_document(document, 2)
 
-    assert stream.getvalue().startswith('<doc id="a&amp;&quot;b">\n<s id="s&lt;1&gt;">\n')
+    assert stream.getvalue().startswith(
+        '<doc file="a&amp;&quot;b" n="2">\n<s id="s&lt;1&gt;">\n'
+    )
 
 
 def test_writer_skips_empty_documents() -> None:
     stream = StringIO()
 
-    VerticalWriter(stream).write_document(Document("empty"))
+    VerticalWriter(stream).write_document(Document("empty"), 1)
 
     assert stream.getvalue() == ""

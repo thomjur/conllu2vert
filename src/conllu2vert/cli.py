@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from .conllu import ConlluError, Document, Stats, read_documents
-from .registry import render_registry
+from .registry import RegistryConfig, render_registry
 from .vertical import VerticalWriter
 
 
@@ -49,8 +49,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--corpus-name",
-        default="pahlavi",
-        help="name used for output file and registry template (default: pahlavi)",
+        default="czerofive",
+        help="name used for output file and registry PATH (default: czerofive)",
     )
     parser.add_argument(
         "--registry",
@@ -64,14 +64,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="do not write a registry template",
     )
     parser.add_argument(
-        "--corpora-path",
+        "--maintainer",
+        default="thomas.jurczyk@googlemail.com",
+        help="MAINTAINER value in the registry",
+    )
+    parser.add_argument(
+        "--info",
+        default="C05corpus",
+        help="INFO value in the registry",
+    )
+    parser.add_argument(
+        "--name",
+        default="C05 Corpus",
+        help="NAME value in the registry",
+    )
+    parser.add_argument(
+        "--language",
+        default="Pahlavi",
+        help="LANGUAGE value in the registry",
+    )
+    parser.add_argument(
+        "--indexed-path",
         default=None,
-        help="PATH value in the registry (default: /corpora/<corpus-name>)",
+        help="PATH value for indexed data (default: /corpora/<corpus-name>/indexed/)",
     )
     parser.add_argument(
         "--vertical-path",
         default=None,
-        help="VERTICAL value in the registry (default: /corpora/src/<corpus-name>.vert)",
+        help="VERTICAL value in the registry (default: /corpora/<corpus-name>/vertical/source)",
     )
     parser.add_argument(
         "--strict",
@@ -116,9 +136,9 @@ def _find_duplicate_ids(documents: list[Document]) -> tuple[list[str], list[str]
     duplicate_sentences: list[str] = []
 
     for document in documents:
-        if document.id in seen_docs and document.id not in duplicate_docs:
-            duplicate_docs.append(document.id)
-        seen_docs.add(document.id)
+        if document.file in seen_docs and document.file not in duplicate_docs:
+            duplicate_docs.append(document.file)
+        seen_docs.add(document.file)
         for sentence in document.sentences:
             if sentence.id in seen_sentences and sentence.id not in duplicate_sentences:
                 duplicate_sentences.append(sentence.id)
@@ -133,25 +153,17 @@ def _write_vertical(path: Path, documents: list[Document]) -> None:
     try:
         with temporary.open("w", encoding="utf-8", newline="\n") as handle:
             writer = VerticalWriter(handle)
-            for document in documents:
-                writer.write_document(document)
+            for number, document in enumerate(documents, 1):
+                writer.write_document(document, number)
         os.replace(temporary, path)
     except BaseException:
         temporary.unlink(missing_ok=True)
         raise
 
 
-def _write_registry(
-    path: Path,
-    *,
-    corpora_path: str,
-    vertical_path: str,
-) -> None:
+def _write_registry(path: Path, config: RegistryConfig) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        render_registry(corpora_path=corpora_path, vertical_path=vertical_path),
-        encoding="utf-8",
-    )
+    path.write_text(render_registry(config), encoding="utf-8")
 
 
 def _report_file(path: Path, documents: list[Document], stats: Stats) -> None:
@@ -187,9 +199,20 @@ def _run(args: argparse.Namespace) -> int:
     if not args.no_registry:
         registry_path = args.registry or args.output_dir / f"{args.corpus_name}.registry"
 
-    corpora_path = args.corpora_path or f"/corpora/{args.corpus_name}"
+    indexed_path = (
+        args.indexed_path or f"/corpora/{args.corpus_name}/indexed/"
+    )
     vertical_path = (
-        args.vertical_path or f"/corpora/src/{args.corpus_name}.vert"
+        args.vertical_path or f"/corpora/{args.corpus_name}/vertical/source"
+    )
+    registry_config = RegistryConfig(
+        maintainer=args.maintainer,
+        info=args.info,
+        name=args.name,
+        path_id=args.corpus_name,
+        language=args.language,
+        indexed_path=indexed_path,
+        vertical_path=vertical_path,
     )
 
     total = Stats()
@@ -210,11 +233,7 @@ def _run(args: argparse.Namespace) -> int:
     _write_vertical(output, documents)
 
     if registry_path is not None:
-        _write_registry(
-            registry_path,
-            corpora_path=corpora_path,
-            vertical_path=vertical_path,
-        )
+        _write_registry(registry_path, registry_config)
 
     if not args.quiet:
         for path, file_documents, file_stats in results:
