@@ -10,6 +10,7 @@ from conllu2vert.conllu import (
     Stats,
     Token,
     clean_comment_line,
+    document_id,
     read_documents,
 )
 
@@ -58,27 +59,27 @@ def test_read_documents_handles_edge_cases(tmp_path: Path) -> None:
 
     documents = list(read_documents(path, stats=stats))
 
-    assert [document.file for document in documents] == ["DOC1", "DOC2"]
-    assert len(documents[0].sentences) == 2
+    assert [document.file for document in documents] == ["sample"]
+    assert len(documents[0].sentences) == 3
     assert documents[0].sentences[0].id == "s1"
     assert documents[0].sentences[0].tokens == (
         Token("a", "a", "NOUN", "Animacy=Inan", "root", 'of "muhr" type'),
         Token("b", "b", "VERB", "_", "dep", "x; y"),
         Token("c", "d; e", "ADJ", "_", "amod", "z"),
+        Token("bad", "bad", "X", "_", "root", "bad"),
     )
     assert documents[0].sentences[1].tokens[0].word == "q"
-    assert documents[1].sentences[0].id == "DOC2_s1"
+    assert documents[0].sentences[2].id == "sample_s3"
 
-    assert stats.documents == 2
+    assert stats.documents == 1
     assert stats.sentences == 3
-    assert stats.tokens == 5
+    assert stats.tokens == 6
+    assert stats.tokens_without_id == 1
     assert stats.skipped == {
         "multiword_token": 1,
         "empty_node": 1,
-        "underscore_id": 1,
     }
     assert stats.missing_sent_ids == 1
-    assert stats.missing_text_ids == 0
 
 
 def test_read_documents_repairs_quoted_comments(tmp_path: Path) -> None:
@@ -113,7 +114,6 @@ def test_read_documents_generates_missing_ids(tmp_path: Path) -> None:
 
     assert documents[0].file == "sample"
     assert documents[0].sentences[0].id == "sample_s1"
-    assert stats.missing_text_ids == 1
     assert stats.missing_sent_ids == 1
 
 
@@ -156,3 +156,123 @@ def test_empty_sentences_are_skipped(tmp_path: Path) -> None:
     assert list(read_documents(path, stats=stats)) == []
     assert stats.documents == 0
     assert stats.sentences == 0
+
+
+def test_document_id_strips_extension_and_suffix() -> None:
+    assert document_id("ADM-MK_conllu.tsv") == "ADM-MK"
+    assert document_id("Dk5-B_conllu.conllu") == "Dk5-B"
+    assert document_id("plain.conllu") == "plain"
+    assert document_id("plain.tsv") == "plain"
+
+
+def test_empty_text_id_does_not_split_documents(tmp_path: Path) -> None:
+    content = "\n".join(
+        [
+            "# text_id = AWN",
+            "# sent_id = s1",
+            token_row("1", "a", "a"),
+            "",
+            "# text_id =",
+            "# sent_id = s2",
+            token_row("1", "b", "b"),
+            "",
+            "# text_id = AWN",
+            "# sent_id = s3",
+            token_row("1", "c", "c"),
+            "",
+        ]
+    )
+    path = write_file(tmp_path, content)
+    stats = Stats()
+
+    documents = list(read_documents(path, stats=stats))
+
+    assert [document.file for document in documents] == ["sample"]
+    assert len(documents[0].sentences) == 3
+    assert stats.documents == 1
+    assert stats.sentences == 3
+
+
+def test_underscore_token_keeps_its_position(tmp_path: Path) -> None:
+    content = "\n".join(
+        [
+            "# sent_id = s1",
+            token_row("1", "a", "a"),
+            token_row("_", "ud", "ud", tag="CCONJ"),
+            token_row("2", "b", "b"),
+            "",
+        ]
+    )
+    path = write_file(tmp_path, content)
+    stats = Stats()
+
+    documents = list(read_documents(path, stats=stats))
+
+    assert [token.word for token in documents[0].sentences[0].tokens] == [
+        "a",
+        "ud",
+        "b",
+    ]
+    assert stats.tokens == 3
+    assert stats.tokens_without_id == 1
+
+
+def test_same_text_id_in_two_files_yields_distinct_documents(tmp_path: Path) -> None:
+    content = "\n".join(
+        [
+            "# text_id = PY",
+            "# sent_id = s1",
+            token_row("1", "a", "a"),
+            "",
+        ]
+    )
+    first = tmp_path / "PY-Pt4_conllu.tsv"
+    second = tmp_path / "PYextr-K7a_conllu.tsv"
+    first.write_text(content, encoding="utf-8")
+    second.write_text(content, encoding="utf-8")
+
+    first_docs = list(read_documents(first))
+    second_docs = list(read_documents(second))
+
+    assert [document.file for document in first_docs] == ["PY-Pt4"]
+    assert [document.file for document in second_docs] == ["PYextr-K7a"]
+
+
+def test_sent_id_underscore_is_treated_as_missing(tmp_path: Path) -> None:
+    content = "\n".join(
+        [
+            "# sent_id = _",
+            token_row("1", "a", "a"),
+            "",
+        ]
+    )
+    path = write_file(tmp_path, content)
+    stats = Stats()
+
+    documents = list(read_documents(path, stats=stats))
+
+    assert documents[0].sentences[0].id == "sample_s1"
+    assert stats.missing_sent_ids == 1
+
+
+def test_generated_sent_id_avoids_explicit_ids(tmp_path: Path) -> None:
+    content = "\n".join(
+        [
+            "# sent_id = sample_s2",
+            token_row("1", "a", "a"),
+            "",
+            "# sent_id = _",
+            token_row("1", "b", "b"),
+            "",
+        ]
+    )
+    path = write_file(tmp_path, content)
+    stats = Stats()
+
+    documents = list(read_documents(path, stats=stats))
+
+    assert [sentence.id for sentence in documents[0].sentences] == [
+        "sample_s2",
+        "sample_s3",
+    ]
+    assert stats.missing_sent_ids == 1

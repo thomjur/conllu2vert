@@ -113,7 +113,7 @@ def _collect_inputs(args: argparse.Namespace) -> list[Path]:
     else:
         if not args.input_dir.is_dir():
             raise ConlluError(f"input directory does not exist: {args.input_dir}")
-        paths = sorted(args.input_dir.glob("*.conllu"))
+        paths = sorted(p for pattern in ('*.conllu', '*.tsv') for p in args.input_dir.glob(pattern))
 
     missing = [path for path in paths if not path.is_file()]
     if missing:
@@ -175,10 +175,10 @@ def _report_file(path: Path, documents: list[Document], stats: Stats) -> None:
     skipped = _format_skipped(stats)
     if skipped:
         details.append(f"skipped: {skipped}")
+    if stats.tokens_without_id:
+        details.append(f"tokens without numeric id: {stats.tokens_without_id}")
     if stats.quoted_comments:
         details.append(f"repaired quoted comments: {stats.quoted_comments}")
-    if stats.missing_text_ids:
-        details.append(f"missing text_id: {stats.missing_text_ids}")
     if stats.missing_sent_ids:
         details.append(f"missing sent_id: {stats.missing_sent_ids}")
     if stats.suspicious_values:
@@ -191,7 +191,7 @@ def _run(args: argparse.Namespace) -> int:
     paths = _collect_inputs(args)
     if not paths:
         raise ConlluError(
-            f"no *.conllu files found in {args.input_dir} and no FILE given"
+            f"no *.conllu/*.tsv files found in {args.input_dir} and no FILE given"
         )
 
     output = args.output or args.output_dir / f"{args.corpus_name}.vert"

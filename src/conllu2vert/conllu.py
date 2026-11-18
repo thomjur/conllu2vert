@@ -15,7 +15,6 @@ ATTRIBUTES = ("word", "lemma", "tag", "feats", "deprel", "sense")
 _TOKEN_ID = re.compile(r"\d+")
 _MULTIWORD_ID = re.compile(r"\d+-\d+")
 _EMPTY_NODE_ID = re.compile(r"\d+\.\d+")
-_TEXT_ID = re.compile(r"^#\s*text_id\s*=\s*(.*)$")
 _SENT_ID = re.compile(r"^#\s*sent_id\s*=\s*(.*)$")
 
 
@@ -31,8 +30,8 @@ class Stats:
     documents: int = 0
     sentences: int = 0
     tokens: int = 0
+    tokens_without_id: int = 0
     quoted_comments: int = 0
-    missing_text_ids: int = 0
     missing_sent_ids: int = 0
     suspicious_values: int = 0
     skipped: Counter[str] = field(default_factory=Counter)
@@ -42,8 +41,8 @@ class Stats:
         self.documents += other.documents
         self.sentences += other.sentences
         self.tokens += other.tokens
+        self.tokens_without_id += other.tokens_without_id
         self.quoted_comments += other.quoted_comments
-        self.missing_text_ids += other.missing_text_ids
         self.missing_sent_ids += other.missing_sent_ids
         self.suspicious_values += other.suspicious_values
         self.skipped.update(other.skipped)
@@ -158,13 +157,25 @@ def _skip_category(columns: list[str], token_id: str) -> str:
         return "multiword_token"
     if _EMPTY_NODE_ID.fullmatch(token_id):
         return "empty_node"
-    if token_id == "_":
-        return "underscore_id"
     if len(columns) == 1:
         return "comment_continuation"
     if len(columns) != 10:
         return "wrong_column_count"
     return "non_numeric_id"
+
+
+def document_id(path: str | Path) -> str:
+    """Return the document id of a file: its name without extension.
+
+    A trailing ``_conllu`` suffix is removed, so ``ADM-MK_conllu.tsv``
+    becomes ``ADM-MK``.
+    """
+
+    stem = Path(path).stem
+    suffix = "_conllu"
+    if stem.endswith(suffix):
+        stem = stem[: -len(suffix)]
+    return stem
 
 
 def read_documents(
@@ -173,66 +184,67 @@ def read_documents(
     stats: Stats | None = None,
     strict: bool = False,
 ) -> Iterator[Document]:
-    """Yield the documents contained in one CoNLL-U file.
+    """Yield the single document contained in one CoNLL-U file.
 
-    A new document starts whenever ``# text_id = ...`` changes (or at the
-    beginning of the file if there is no ``text_id``).  Multiword tokens,
-    empty nodes and malformed rows without a numeric ID are skipped, because
-    the vertical corpus should contain only surface tokens.
+    The document id is derived from the file name (see :func:`document_id`),
+    so every input file becomes exactly one document.  ``# text_id`` is not
+    used to split documents: it may be repeated or empty, which is harmless.
+    Multiword tokens and empty nodes are skipped, because the individual
+    surface tokens already exist.  Rows with ``_`` as their token id are kept:
+    the vertical format does not write token ids and the rows are already in
+    reading order.  Malformed rows are skipped.
     """
 
     path = Path(path)
     stats = Stats() if stats is None else stats
-    documents: list[Document] = []
-    document: Document | None = None
+    document = Document(document_id(path))
     sentence_id: str | None = None
     sentence_tokens: list[Token] = []
-    sentence_index = 0
+    generated_sentences: list[tuple[Sentence, int]] = []
 
     def close_sentence(*, reset_id: bool = False) -> None:
-        nonlocal sentence_id, sentence_tokens, sentence_index
+        nonlocal sentence_id, sentence_tokens
         if not sentence_tokens:
             if reset_id:
                 sentence_id = None
             return
-        if document is None:  # pragma: no cover - defensive
-            raise ConlluError(f"{path}: token found before a document was opened")
-        sentence_index += 1
-        sid = sentence_id
+        sid = sentence_id or ""
+        sentence = Sentence(sid, tuple(sentence_tokens))
+        document.sentences.append(sentence)
         if not sid:
-            sid = f"{document.file}_s{sentence_index}"
+            generated_sentences.append((sentence, len(document.sentences)))
             stats.missing_sent_ids += 1
-        document.sentences.append(Sentence(sid, tuple(sentence_tokens)))
         stats.sentences += 1
         stats.tokens += len(sentence_tokens)
         sentence_id = None
         sentence_tokens = []
 
-    def start_document(new_id: str) -> None:
-        nonlocal document, sentence_index
-        close_sentence()
-        if document is not None and document.sentences:
-            documents.append(document)
-            stats.documents += 1
-        document = Document(new_id)
-        sentence_index = 0
+    def assign_generated_ids() -> None:
+        """Fill in ids for sentences without ``# sent_id``.
+
+        The generated ``<file>_s<N>`` ids must not collide with explicit ids
+        from the same file: a placeholder ``# sent_id = _`` can appear right
+        next to real ids such as ``AWN-K20_s8``.
+        """
+
+        if not generated_sentences:
+            return
+        used = {sentence.id for sentence in document.sentences if sentence.id}
+        for sentence, position in generated_sentences:
+            index = position
+            candidate = f"{document.file}_s{index}"
+            while candidate in used:
+                index += 1
+                candidate = f"{document.file}_s{index}"
+            sentence.id = candidate
+            used.add(candidate)
 
     def handle_comment(comment: str) -> None:
         nonlocal sentence_id
-        text_id_match = _TEXT_ID.match(comment)
-        if text_id_match:
-            new_id = text_id_match.group(1).strip()
-            if not new_id:
-                new_id = path.stem
-                stats.missing_text_ids += 1
-            if document is None or document.file != new_id:
-                start_document(new_id)
-            return
-
         sent_id_match = _SENT_ID.match(comment)
         if sent_id_match:
             new_id = sent_id_match.group(1).strip()
-            if new_id:
+            if new_id and new_id != "_":
                 sentence_id = new_id
 
     with path.open(encoding="utf-8") as handle:
@@ -255,10 +267,9 @@ def read_documents(
             columns = line.split("\t")
             token_id = columns[0]
 
-            if len(columns) == 10 and _TOKEN_ID.fullmatch(token_id):
-                if document is None:
-                    start_document(path.stem)
-                    stats.missing_text_ids += 1
+            if len(columns) == 10 and (
+                _TOKEN_ID.fullmatch(token_id) or token_id == "_"
+            ):
                 sentence_tokens.append(
                     _parse_token(
                         columns,
@@ -268,6 +279,8 @@ def read_documents(
                         strict=strict,
                     )
                 )
+                if token_id == "_":
+                    stats.tokens_without_id += 1
                 continue
 
             category = _skip_category(columns, token_id)
@@ -278,11 +291,10 @@ def read_documents(
                 )
 
     close_sentence()
-    if document is not None and document.sentences:
-        documents.append(document)
+    assign_generated_ids()
+    if document.sentences:
         stats.documents += 1
-
-    yield from documents
+        yield document
 
 
 def read_many(

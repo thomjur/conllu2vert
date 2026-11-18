@@ -13,7 +13,7 @@ uv sync
 uv run conllu2vert
 ```
 
-Standardmäßig werden alle `*.conllu` aus `src/data/input` gelesen und nach
+Standardmäßig werden alle `*.conllu` und `*.tsv` aus `src/data/input` gelesen und nach
 `src/data/output/czerofive.vert` geschrieben. Zusätzlich entsteht die passende
 Registry-Vorlage `src/data/output/czerofive.registry`.
 
@@ -29,14 +29,14 @@ uv run conllu2vert \
 Einzelne Dateien lassen sich auch direkt übergeben:
 
 ```bash
-uv run conllu2vert src/data/input/Dk5-B_conllu.conllu --no-registry
+uv run conllu2vert src/data/input/Dk5-B_conllu.tsv --no-registry
 ```
 
 ## Optionen
 
 | Option | Bedeutung |
 | --- | --- |
-| `FILE ...` | Explizite CoNLL-U-Dateien; sonst alle `*.conllu` aus `--input-dir` |
+| `FILE ...` | Explizite CoNLL-U-Dateien; sonst alle `*.conllu`/`*.tsv` aus `--input-dir` |
 | `-i, --input-dir` | Eingabeverzeichnis (Default: `src/data/input`) |
 | `-o, --output` | Vertical-Datei (Default: `<output-dir>/<corpus-name>.vert`) |
 | `--output-dir` | Verzeichnis für Default-Ausgabe (Default: `src/data/output`) |
@@ -63,13 +63,13 @@ word    lemma    tag    feats    deprel    sense
 Dokumente werden global von 1 an nummeriert:
 
 ```
-<doc file="Dk5" n="1">
+<doc file="Dk5-B" n="1">
 <s id="Dk5-B_s1">
 pērōzgarīh	pērōzgarīh	NOUN	Animacy=Inan	root	victoriousness
 ...
 </s>
 </doc>
-<doc file="GA" n="2">
+<doc file="GA-K20" n="2">
 ...
 </doc>
 ```
@@ -116,11 +116,21 @@ Registry an die eigene Serverumgebung anpassen.
 
 ## Konvertierungsregeln
 
-- Nur echte Oberflächen-Tokens werden übernommen. Multiword-Tokens (`1-2`),
-  leere Knoten (`4.1`) und Zeilen ohne numerische ID werden übersprungen.
-- `# text_id` bestimmt das Attribut `file`; fehlt es, wird der Dateiname genutzt.
+- Nur echte Oberflächen-Tokens werden übernommen. Multiword-Tokens (`1-2`) und
+  leere Knoten (`4.1`) werden übersprungen, weil die einzelnen Oberflächen-Tokens
+  bereits vorhanden sind.
+- Zeilen mit `_` als Token-ID werden als normale Tokens übernommen. Die
+  Token-ID wird im Vertical-Format ohnehin nicht ausgegeben, und die Zeilen
+  stehen bereits an der richtigen Position im Satz. Sie werden im Report als
+  `tokens without numeric id` ausgewiesen.
+- Das Attribut `file` ist der Dateiname ohne Endung und ohne `_conllu`-Suffix,
+  z. B. `ADM-MK` für `ADM-MK_conllu.tsv`. Jede Eingabedatei ergibt genau ein
+  Dokument; `# text_id` wird dafür nicht verwendet und darf leer sein oder sich
+  wiederholen.
 - `n` wird global über alle Dokumente fortlaufend ab 1 vergeben.
-- `# sent_id` bestimmt die Satz-ID; fehlt sie, wird `<file>_s<N>` generiert.
+- `# sent_id` bestimmt die Satz-ID; fehlt sie oder ist sie `_`, wird
+  `<file>_s<N>` generiert. Kollidiert eine generierte ID mit einer echten ID
+  derselben Datei, wird die nächste freie Nummer verwendet.
 - Mehrfache Werte in Lemma und Sense (`a|b`, `Sense=x|Sense=y`) werden mit
   `; ` verbunden, z. B. `x; y`.
 - Kaputte CSV-quotierte Kommentarzeilen werden repariert bzw. ignoriert,

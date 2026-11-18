@@ -9,7 +9,7 @@ def token_row(word: str, lemma: str) -> str:
     return "\t".join(["1", word, lemma, "NOUN", "_", "_", "0", "root", "_", "Sense=x"])
 
 
-def test_cli_converts_all_files_into_one_corpus(tmp_path: Path) -> None:
+def test_cli_converts_all_files_into_one_corpus(tmp_path: Path, capsys) -> None:
     input_dir = tmp_path / "input"
     output_dir = tmp_path / "output"
     input_dir.mkdir()
@@ -54,10 +54,11 @@ def test_cli_converts_all_files_into_one_corpus(tmp_path: Path) -> None:
     assert registry.exists()
 
     content = vertical.read_text(encoding="utf-8")
-    assert content.index('<doc file="A" n="1">') < content.index('<doc file="B" n="2">')
+    assert content.index('<doc file="a" n="1">') < content.index('<doc file="b" n="2">')
     assert content.count("<doc ") == 2
     assert "a\ta\tNOUN\t_\troot\tx\n" in content
     assert "b\tb\tNOUN\t_\troot\tx\n" in content
+    assert "duplicate" not in capsys.readouterr().err
 
     registry_content = registry.read_text(encoding="utf-8")
     assert "ATTRIBUTE word\nATTRIBUTE lemma\nATTRIBUTE tag\n" in registry_content
@@ -92,7 +93,7 @@ def test_cli_can_skip_registry_and_accept_explicit_files(tmp_path: Path) -> None
     assert exit_code == 0
     assert output.exists()
     assert not (tmp_path / "custom.registry").exists()
-    assert '<doc file="ONE" n="1">' in output.read_text(encoding="utf-8")
+    assert '<doc file="one" n="1">' in output.read_text(encoding="utf-8")
 
 
 def test_cli_returns_error_for_missing_input_directory(tmp_path: Path, capsys) -> None:
