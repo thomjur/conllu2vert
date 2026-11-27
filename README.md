@@ -15,7 +15,7 @@ uv run conllu2vert
 
 Standardmäßig werden alle `*.conllu` und `*.tsv` aus `src/data/input` gelesen und nach
 `src/data/output/czerofive.vert` geschrieben. Zusätzlich entsteht die passende
-Registry-Vorlage `src/data/output/czerofive.registry`.
+Registry-Vorlage `src/data/output/czerofive.registry`. Wichtig zu beachten ist, dass die Registry Datei abhängig von der eigenen No Sketch Instanz noch manuell angepasst werden muss, um das Korpus in No Sketch Engine einzupflegen.
 
 Beispiel mit expliziten Pfaden:
 
@@ -116,8 +116,8 @@ Registry an die eigene Serverumgebung anpassen.
 
 ## Konvertierungsregeln
 
-- Nur echte Oberflächen-Tokens werden übernommen. Multiword-Tokens (`1-2`) und
-  leere Knoten (`4.1`) werden übersprungen, weil die einzelnen Oberflächen-Tokens
+- Nur echte Tokens werden übernommen. Multiword-Tokens (`1-2`) und
+  leere Knoten (`4.1`) werden übersprungen, weil die einzelnen Tokens
   bereits vorhanden sind.
 - Zeilen mit `_` als Token-ID werden als normale Tokens übernommen. Die
   Token-ID wird im Vertical-Format ohnehin nicht ausgegeben, und die Zeilen
